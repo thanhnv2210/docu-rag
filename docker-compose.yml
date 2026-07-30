@@ -1,0 +1,30 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: docu_rag
+      POSTGRES_PASSWORD: docu_rag
+      POSTGRES_DB: docu_rag
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docu_rag -d docu_rag"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - "8001:8001"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://docu_rag:docu_rag@db:5432/docu_rag
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
