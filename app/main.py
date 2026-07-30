@@ -1,14 +1,16 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from app.config import get_settings
 from app.db.connection import close_pool, create_pool
 from app.db.schema import init_schema
 
 logger = logging.getLogger(__name__)
+access_logger = logging.getLogger("access")
 
 
 @asynccontextmanager
@@ -49,6 +51,21 @@ def create_app() -> FastAPI:
         version="1.0.0",
         lifespan=lifespan,
     )
+
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):  # type: ignore[no-untyped-def]
+        start = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - start) * 1000
+        access_logger.info(
+            '%s %s %d %.0fms client="%s"',
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+            request.client.host if request.client else "-",
+        )
+        return response
 
     from app.api.health import router as health_router
     from app.api.ingest import router as ingest_router

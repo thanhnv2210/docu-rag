@@ -36,6 +36,9 @@ docs/
 # Local Docker data volume
 pgdata/
 
+# Logs
+logs/
+
 # IDE and OS
 .vscode/
 .idea/

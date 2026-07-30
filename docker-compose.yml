@@ -22,6 +22,9 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://docu_rag:docu_rag@db:5432/docu_rag
+      LOG_FILE: logs/app.log
+    volumes:
+      - ./logs:/app/logs
     depends_on:
       db:
         condition: service_healthy

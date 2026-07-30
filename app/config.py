@@ -1,4 +1,6 @@
 import logging
+import logging.handlers
+import os
 from functools import lru_cache
 from typing import Literal
 
@@ -42,12 +44,32 @@ class Settings(BaseSettings):
 
     # Logging
     log_level: str = "INFO"
+    log_file: str = "logs/app.log"
 
     def configure_logging(self) -> None:
-        logging.basicConfig(
-            level=getattr(logging, self.log_level.upper(), logging.INFO),
-            format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+        level = getattr(logging, self.log_level.upper(), logging.INFO)
+        fmt = "%(asctime)s %(levelname)s %(name)s — %(message)s"
+        formatter = logging.Formatter(fmt)
+
+        root = logging.getLogger()
+        root.setLevel(level)
+
+        # Console handler (captured by docker logs)
+        if not root.handlers:
+            console = logging.StreamHandler()
+            console.setFormatter(formatter)
+            root.addHandler(console)
+
+        # Rotating file handler — 10 MB per file, keep 5 backups
+        os.makedirs(os.path.dirname(self.log_file), exist_ok=True)
+        file_handler = logging.handlers.RotatingFileHandler(
+            self.log_file,
+            maxBytes=10 * 1024 * 1024,
+            backupCount=5,
+            encoding="utf-8",
         )
+        file_handler.setFormatter(formatter)
+        root.addHandler(file_handler)
 
 
 @lru_cache

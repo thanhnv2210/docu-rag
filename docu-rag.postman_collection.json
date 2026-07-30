@@ -1,0 +1,420 @@
+{
+  "info": {
+    "name": "docu-rag",
+    "description": "Test collection for the docu-rag RAG API.\n\nWorkflow:\n1. Run **Health Check** to confirm the service is up.\n2. Run **Ingest — Demo Corpus** to load the fintech-demo docs.\n3. Run any **Query** request to get a streaming SSE answer.\n\nBase URL defaults to http://localhost:8001. Change the `base_url` collection variable for other environments.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8001",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Returns API status, live vector count, and active provider info."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Body has status ok', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.status).to.eql('ok');",
+                  "  pm.expect(json).to.have.property('vector_count');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(json).to.have.property('embed_model');",
+                  "  pm.expect(json).to.have.property('llm_model');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK — Ollama provider",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"status\": \"ok\",\n  \"vector_count\": 148,\n  \"provider\": \"ollama\",\n  \"embed_model\": \"nomic-embed-text\",\n  \"llm_model\": \"llama3.2\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Ingest",
+      "item": [
+        {
+          "name": "POST /ingest — Demo Corpus (reset)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/ingest",
+              "host": ["{{base_url}}"],
+              "path": ["ingest"]
+            },
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"corpus_path\": \"corpus/fintech-demo\",\n  \"reset\": true\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Indexes the 7 FinPay demo markdown files into pgvector.\n\n`reset: true` wipes any existing chunks for this corpus path before re-indexing — safe to run multiple times."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response shape is correct', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.chunks_indexed).to.be.a('number').and.to.be.above(0);",
+                  "  pm.expect(json.files_processed).to.eql(7);",
+                  "  pm.expect(json.duration_ms).to.be.a('number');",
+                  "});",
+                  "pm.test('Saves chunk count as variable', () => {",
+                  "  pm.collectionVariables.set('last_chunk_count', pm.response.json().chunks_indexed);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"chunks_indexed\": 148,\n  \"files_processed\": 7,\n  \"duration_ms\": 3241\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST /ingest — Demo Corpus (no reset)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/ingest",
+              "host": ["{{base_url}}"],
+              "path": ["ingest"]
+            },
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"corpus_path\": \"corpus/fintech-demo\",\n  \"reset\": false\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Appends chunks without deleting existing ones. Use when adding new files to an already-indexed corpus."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('chunks_indexed is positive', () => {",
+                  "  pm.expect(pm.response.json().chunks_indexed).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /ingest — Custom Corpus Path",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/ingest",
+              "host": ["{{base_url}}"],
+              "path": ["ingest"]
+            },
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"corpus_path\": \"/path/to/your/docs\",\n  \"reset\": true\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Change `corpus_path` to any folder of .md files on the host machine (path is resolved by the API server)."
+          }
+        },
+        {
+          "name": "POST /ingest — 422 Invalid Path",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/ingest",
+              "host": ["{{base_url}}"],
+              "path": ["ingest"]
+            },
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"corpus_path\": \"/nonexistent/path\",\n  \"reset\": false\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Expects a 422 error when the path does not exist."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 422 for invalid path', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "422 Unprocessable Entity",
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"detail\": \"corpus_path '/nonexistent/path' does not exist or is not a directory\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Query",
+      "description": "POST /query streams a Server-Sent Events (SSE) response.\n\nPostman buffers the full SSE stream and displays it as raw text. Look for:\n- Lines starting with `data: {\"type\": \"token\", ...}` — individual answer tokens\n- A single `data: {\"type\": \"metadata\", ...}` line — sources + latency stats\n- A final `data: [DONE]` line\n\nFor real-time streaming, use the curl command shown in the README.",
+      "item": [
+        {
+          "name": "POST /query — ArcaPay Retry Policy",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/query",
+              "host": ["{{base_url}}"],
+              "path": ["query"]
+            },
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"What retry policy applies when ArcaPay returns a timeout?\",\n  \"top_k\": 5\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Multi-hop query: answer spans payment-hub-integrations.md (ArcaPay TIMEOUT error code) and resilience-patterns.md (retry policy config)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Content-Type is event-stream', () => {",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream');",
+                  "});",
+                  "pm.test('Response contains token events', () => {",
+                  "  pm.expect(pm.response.text()).to.include('\"type\": \"token\"');",
+                  "});",
+                  "pm.test('Response contains metadata event', () => {",
+                  "  pm.expect(pm.response.text()).to.include('\"type\": \"metadata\"');",
+                  "});",
+                  "pm.test('Response ends with [DONE]', () => {",
+                  "  pm.expect(pm.response.text().trim()).to.match(/data: \\[DONE\\]\\s*$/);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /query — Transaction State Machine",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/query",
+              "host": ["{{base_url}}"],
+              "path": ["query"]
+            },
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"Walk me through the transaction lifecycle from initiation to settlement.\",\n  \"top_k\": 5\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Tests retrieval from transaction-state-machine.md. Expect PENDING → SUBMITTED → CONFIRMED → SETTLED lifecycle in the answer."
+          }
+        },
+        {
+          "name": "POST /query — Payment Timeout Handling",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/query",
+              "host": ["{{base_url}}"],
+              "path": ["query"]
+            },
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"How does FinPay handle a payment that times out during hub submission?\",\n  \"top_k\": 5\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Multi-hop: transaction-state-machine.md (timeout reconciliation flow) + resilience-patterns.md (retry + DLQ)."
+          }
+        },
+        {
+          "name": "POST /query — Circuit Breaker Behaviour",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/query",
+              "host": ["{{base_url}}"],
+              "path": ["query"]
+            },
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"When does the circuit breaker open for LocalPay and how does routing adapt?\",\n  \"top_k\": 5\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Multi-hop: resilience-patterns.md (LocalPay CB config) + system-overview.md (Payment Router fallback)."
+          }
+        },
+        {
+          "name": "POST /query — Database Indexes",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/query",
+              "host": ["{{base_url}}"],
+              "path": ["query"]
+            },
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"What indexes exist on the transactions table and why were they chosen?\",\n  \"top_k\": 5\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Single-source: database-schema.md. Expect idempotency, state, merchant+created_at, and hub_reference indexes."
+          }
+        },
+        {
+          "name": "POST /query — Deployment Rollback",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/query",
+              "host": ["{{base_url}}"],
+              "path": ["query"]
+            },
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"What are the steps to roll back a bad deployment including a database migration?\",\n  \"top_k\": 3\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Single-source: deployment-runbook.md. Tests smaller top_k=3."
+          }
+        },
+        {
+          "name": "POST /query — 422 Missing Question",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/query",
+              "host": ["{{base_url}}"],
+              "path": ["query"]
+            },
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"top_k\": 5\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Expects 422 when `question` field is missing."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 422 for missing question', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /query — 422 top_k Out of Range",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/query",
+              "host": ["{{base_url}}"],
+              "path": ["query"]
+            },
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"Valid question\",\n  \"top_k\": 99\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Expects 422 when top_k exceeds the max value of 20."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 422 for top_k > 20', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
