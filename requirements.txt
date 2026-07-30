@@ -1,0 +1,25 @@
+# Web framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+
+# SSE streaming
+sse-starlette==2.1.3
+
+# Database
+asyncpg==0.30.0
+
+# LangChain (chunking only)
+langchain-text-splitters==0.3.3
+
+# Embeddings & LLM providers
+ollama==0.4.4
+anthropic==0.40.0
+
+# Token counting for chunking
+tiktoken==0.8.0
+
+# Configuration
+pydantic-settings==2.6.1
+
+# HTTP client (Ollama calls)
+httpx==0.28.0
