@@ -67,7 +67,8 @@ class RetrievedChunk:
     rrf_score: float
 
 
-def _embedding_to_pg(vector: list[float]) -> str:
+def embedding_to_pg(vector: list[float]) -> str:
+    """Serialise a float list to pgvector's text format: '[1.0,2.0,...]'"""
     return "[" + ",".join(f"{v:.8f}" for v in vector) + "]"
 
 
@@ -83,7 +84,7 @@ async def retrieve(
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             _HYBRID_SEARCH_SQL,
-            _embedding_to_pg(query_vector),
+            embedding_to_pg(query_vector),
             candidate_k,
             question,
             top_k,

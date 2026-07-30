@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: docu_rag
+          POSTGRES_PASSWORD: docu_rag
+          POSTGRES_DB: docu_rag
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://docu_rag:docu_rag@localhost:5432/docu_rag
+      LLM_PROVIDER: ollama
+      OLLAMA_BASE_URL: http://localhost:11434
+      OLLAMA_LLM_MODEL: llama3.2
+      OLLAMA_EMBED_MODEL: nomic-embed-text
+      EMBED_DIMS: "768"
+      CHUNK_SIZE: "512"
+      CHUNK_OVERLAP: "50"
+      TOP_K: "5"
+      LOG_LEVEL: INFO
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint — ruff
+        run: ruff check .
+
+      - name: Type check — mypy
+        run: mypy app/
+
+      - name: Test — pytest
+        run: pytest tests/ -v --tb=short

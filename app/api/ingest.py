@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from app.db.schema import ensure_vector_index
 from app.models.schemas import IngestRequest, IngestResponse
 from app.services.chunker import chunk_corpus
+from app.services.retriever import embedding_to_pg
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +22,6 @@ VALUES ($1, $2, $3, $4, $5::vector, $6::jsonb)
 _DELETE_CORPUS_SQL = """
 DELETE FROM documents WHERE file_path LIKE $1
 """
-
-
-def _embedding_to_pg(vector: list[float]) -> str:
-    """Serialise a float list to pgvector's text format: '[1.0,2.0,...]'"""
-    return "[" + ",".join(f"{v:.8f}" for v in vector) + "]"
 
 
 @router.post("/ingest", response_model=IngestResponse)
@@ -70,7 +66,7 @@ async def ingest(request: Request, body: IngestRequest) -> IngestResponse:
                     chunk.title,
                     chunk.chunk_index,
                     chunk.content,
-                    _embedding_to_pg(vectors[i]),
+                    embedding_to_pg(vectors[i]),
                     json.dumps(chunk.metadata),
                 )
                 for i, chunk in enumerate(chunks)
