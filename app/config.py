@@ -23,9 +23,12 @@ class Settings(BaseSettings):
     ollama_llm_model: str = "llama3.2"
     ollama_embed_model: str = "nomic-embed-text"
 
-    # Anthropic (optional)
+    # Anthropic (optional — LLM)
     anthropic_api_key: str = ""
     anthropic_llm_model: str = "claude-haiku-4-5-20251001"
+
+    # Voyage AI (optional — embeddings when LLM_PROVIDER=anthropic)
+    voyage_api_key: str = ""
 
     # Embeddings
     embed_dims: int = 768

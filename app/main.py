@@ -28,6 +28,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     app.state.embedder = make_embedder(settings)
     app.state.llm = make_llm_client(settings)
+    app.state.settings = settings
 
     logger.info(
         "docu-rag started | provider=%s | embed_dims=%d",
@@ -49,10 +50,11 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Routers registered here; modules created in M3/M4
     from app.api.health import router as health_router
+    from app.api.ingest import router as ingest_router
 
     app.include_router(health_router)
+    app.include_router(ingest_router)
 
     return app
 

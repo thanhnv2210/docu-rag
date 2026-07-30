@@ -14,6 +14,7 @@ langchain-text-splitters==0.3.3
 # Embeddings & LLM providers
 ollama==0.4.4
 anthropic==0.40.0
+voyageai==0.3.2
 
 # Token counting for chunking
 tiktoken==0.8.0
