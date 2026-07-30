@@ -187,14 +187,17 @@ Copy `.env.example` to `.env` and edit as needed.
 |---|---|---|
 | `DATABASE_URL` | (required) | asyncpg PostgreSQL connection string |
 | `LLM_PROVIDER` | `ollama` | `ollama` or `anthropic` |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL. Use `http://host.docker.internal:11434` when running inside Docker on macOS/Windows |
 | `OLLAMA_LLM_MODEL` | `llama3.2` | Ollama chat model |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Ollama embedding model (768 dims) |
 | `ANTHROPIC_API_KEY` | _(optional)_ | Required if `LLM_PROVIDER=anthropic` |
 | `VOYAGE_API_KEY` | _(optional)_ | Required if `LLM_PROVIDER=anthropic` (voyage-3 embeddings) |
 | `EMBED_DIMS` | `768` | Must match embedding model output dims |
 | `CHUNK_SIZE` | `512` | Max tokens per chunk |
+| `CHUNK_OVERLAP` | `50` | Overlap tokens between consecutive chunks |
 | `TOP_K` | `5` | Chunks retrieved per query |
+| `LOG_LEVEL` | `INFO` | Python log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `LOG_FILE` | `logs/app.log` | Path to the rotating log file (10 MB per file, 5 backups) |
 
 ### Switch to Anthropic
 
@@ -265,6 +268,33 @@ curl -X POST https://<your-app>.onrender.com/ingest \
 
 ---
 
+## Observability
+
+The app writes structured logs to both stdout (captured by `docker logs`) and a rotating file at `logs/app.log` on the host.
+
+**Log format:**
+```
+2026-07-30 09:59:55,000 INFO access — GET /health 200 7ms client="192.168.0.1"
+2026-07-30 09:59:54,257 INFO app.main — docu-rag started | provider=ollama | embed_dims=768
+```
+
+Every HTTP request is logged by the `access` logger with method, path, status code, duration, and client IP. Application events (startup, ingest, errors) use their module's logger name.
+
+```bash
+# Tail the live log
+tail -f logs/app.log
+
+# Filter access logs only
+grep " access " logs/app.log
+
+# Filter errors
+grep " ERROR " logs/app.log
+```
+
+Rotation: 10 MB per file, 5 backups kept (`app.log`, `app.log.1` … `app.log.5`).
+
+---
+
 ## Development
 
 ```bash
@@ -319,6 +349,8 @@ tests/
 ├── test_chunker.py     # Unit tests (no external deps)
 ├── test_retriever.py   # Unit tests (mocked asyncpg)
 └── test_api.py         # Integration tests (requires DATABASE_URL)
+logs/
+└── app.log             # Rotating application + access log (gitignored)
 docs/
 └── decisions/          # ADR-001, PDR-001
 ```

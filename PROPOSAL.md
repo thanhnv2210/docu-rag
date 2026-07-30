@@ -1,8 +1,8 @@
 # docu-rag — Technical Proposal
 
-**Version:** 1.0
+**Version:** 1.1
 **Date:** 2026-07-30
-**Status:** Approved — ready to implement
+**Status:** Implemented — v1 delivered and verified locally
 
 ---
 
@@ -94,7 +94,7 @@ Markdown files
       ▼
   Embedder.embed(texts: list[str]) → list[list[float]]
       │  Ollama: POST /api/embeddings  (nomic-embed-text, 768 dims)
-      │  Anthropic: voyage-3 API       (1536 dims, set EMBED_DIMS=1536)
+      │  Anthropic: voyage-3 API       (1024 dims, set EMBED_DIMS=1024)
       ▼
   asyncpg bulk INSERT into documents table
       │
@@ -240,7 +240,8 @@ CREATE INDEX IF NOT EXISTS idx_documents_fts
 ```
 
 **Notes:**
-- `EMBED_DIMS=768` for Ollama `nomic-embed-text`; set to `1536` if using Anthropic `voyage-3`
+- `EMBED_DIMS=768` for Ollama `nomic-embed-text`; set to `1024` if using Anthropic `voyage-3`
+- IVFFlat index is **deferred**: it is not created on startup (IVFFlat requires data to train on). `schema.py` creates only the GIN FTS index at startup; the IVFFlat index is dropped and rebuilt by `ensure_vector_index()` called at the end of each `/ingest` request
 - IVFFlat with `lists=100` is appropriate for corpora up to ~1M chunks; switch to HNSW for larger datasets
 - `metadata` JSONB stores arbitrary front-matter extracted from markdown (e.g., `{"tags": ["resilience"], "version": "1.2"}`)
 
@@ -347,21 +348,53 @@ Both are instantiated once at app startup via `lifespan` and stored in `app.stat
 
 ## 9. Streaming Implementation
 
-FastAPI's `EventSourceResponse` (via `sse-starlette`) wraps an async generator:
+`/query` returns a `StreamingResponse` with `media_type="text/event-stream"` wrapping an async generator. `sse-starlette` is installed but `StreamingResponse` is used directly for full control over framing and headers:
 
 ```python
 async def token_stream(question: str, chunks: list[Chunk]) -> AsyncGenerator[str, None]:
     prompt = build_prompt(question, chunks)
     async for token in llm.stream_chat(messages=[{"role": "user", "content": prompt}]):
-        yield json.dumps({"type": "token", "content": token})
-    yield json.dumps({"type": "metadata", "sources": [...], "latency_ms": ..., "tokens_used": ...})
+        yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+    yield f"data: {json.dumps({'type': 'metadata', 'sources': [...], 'latency_ms': ..., 'tokens_used': ...})}\n\n"
+    yield "data: [DONE]\n\n"
+
+return StreamingResponse(token_stream(...), media_type="text/event-stream",
+                         headers={"X-Accel-Buffering": "no"})
 ```
 
-The client (React or curl) reads `data:` lines and renders tokens as they arrive.
+`X-Accel-Buffering: no` disables nginx proxy buffering so tokens reach the client immediately (required on Render). The client (React or curl) reads `data:` lines and renders tokens as they arrive.
 
 ---
 
-## 10. Demo Corpus — FinPay Platform
+## 10. Observability
+
+### Logging
+
+Structured logs are written to both stdout (for `docker logs`) and a rotating file (`logs/app.log` on the host, mounted via `./logs:/app/logs`).
+
+Two named loggers:
+- **`app.*`** — application events (startup, ingest, DB pool lifecycle, errors)
+- **`access`** — one line per HTTP request
+
+Access log format:
+```
+2026-07-30 09:59:55,000 INFO access — GET /health 200 7ms client="192.168.0.1"
+```
+
+Implemented as a FastAPI HTTP middleware in `app/main.py` using `time.perf_counter()` for sub-millisecond precision. The middleware runs for all routes including SSE streams; the logged duration covers the full streaming response.
+
+**Rotation:** 10 MB per file, 5 backups kept (`app.log`, `app.log.1` … `app.log.5`), configured via `logging.handlers.RotatingFileHandler`.
+
+**Configuration:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `LOG_LEVEL` | `INFO` | Python log level |
+| `LOG_FILE` | `logs/app.log` | Rotating log file path |
+
+---
+
+## 11. Demo Corpus — FinPay Platform
 
 `corpus/fintech-demo/` ships with the repo. It documents a **fictional** payment platform called **FinPay**. No real company names, real endpoints, or proprietary information appear anywhere in these files.
 
@@ -379,7 +412,7 @@ These files are designed to produce realistic, multi-hop RAG questions — e.g.,
 
 ---
 
-## 11. Technology Decisions & Rationale
+## 12. Technology Decisions & Rationale
 
 | Decision | Choice | Why |
 |---|---|---|
@@ -395,49 +428,56 @@ These files are designed to produce realistic, multi-hop RAG questions — e.g.,
 
 ---
 
-## 12. Implementation Milestones
+## 13. Implementation Milestones
 
-### M1 — Scaffold (current)
+### M1 — Scaffold ✅
 - [x] `CLAUDE.md`, `PROPOSAL.md`, `README.md`
-- [ ] `.env.example`, `.gitignore`, `requirements.txt`, `requirements-dev.txt`
-- [ ] Project directory structure (empty `__init__.py` files)
-- [ ] `app/config.py` — pydantic-settings Settings class
+- [x] `.env.example`, `.gitignore`, `requirements.txt`, `requirements-dev.txt`
+- [x] Project directory structure (empty `__init__.py` files)
+- [x] `app/config.py` — pydantic-settings Settings class
 
-### M2 — Database layer
-- [ ] `docker-compose.yml` — pgvector/pgvector:pg16 + app service
-- [ ] `app/db/connection.py` — asyncpg pool, lifespan hook
-- [ ] `app/db/schema.py` — DDL execution on startup
-- [ ] `app/main.py` — FastAPI app factory with lifespan
+### M2 — Database layer ✅
+- [x] `docker-compose.yml` — pgvector/pgvector:pg16 + app service
+- [x] `app/db/connection.py` — asyncpg pool, lifespan hook
+- [x] `app/db/schema.py` — DDL execution on startup
+- [x] `app/main.py` — FastAPI app factory with lifespan
 
-### M3 — Ingest pipeline
-- [ ] `corpus/fintech-demo/` — 7 demo markdown files
-- [ ] `app/services/chunker.py` — markdown-aware splitter
-- [ ] `app/services/embedder.py` — OllamaEmbedder + AnthropicEmbedder
-- [ ] `app/models/schemas.py` — IngestRequest, IngestResponse
-- [ ] `app/api/ingest.py` — POST /ingest endpoint
+### M3 — Ingest pipeline ✅
+- [x] `corpus/fintech-demo/` — 7 demo markdown files
+- [x] `app/services/chunker.py` — markdown-aware splitter
+- [x] `app/services/embedder.py` — OllamaEmbedder + VoyageEmbedder (via `voyageai` SDK, not Anthropic SDK)
+- [x] `app/models/schemas.py` — IngestRequest, IngestResponse
+- [x] `app/api/ingest.py` — POST /ingest endpoint
 
-### M4 — Query & streaming
-- [ ] `app/services/retriever.py` — hybrid search SQL + RRF
-- [ ] `app/services/llm.py` — OllamaLLMClient + AnthropicLLMClient
-- [ ] `app/models/schemas.py` — QueryRequest, SSE event models
-- [ ] `app/api/query.py` — POST /query SSE endpoint
-- [ ] `GET /health` endpoint
+### M4 — Query & streaming ✅
+- [x] `app/services/retriever.py` — hybrid search SQL + RRF
+- [x] `app/services/llm.py` — OllamaLLMClient + AnthropicLLMClient
+- [x] `app/models/schemas.py` — QueryRequest, SSE event models
+- [x] `app/api/query.py` — POST /query SSE endpoint
+- [x] `GET /health` endpoint
 
-### M5 — Tests & CI
-- [ ] `tests/conftest.py` — pytest fixtures, test DB setup
-- [ ] `tests/test_chunker.py` — unit tests for chunking logic
-- [ ] `tests/test_retriever.py` — unit tests for RRF merge
-- [ ] `tests/test_api.py` — integration tests for /ingest and /query
-- [ ] `.github/workflows/ci.yml` — ruff + mypy + pytest
+### M5 — Tests & CI ✅
+- [x] `tests/conftest.py` — pytest fixtures, MockEmbedder + MockLLMClient, monkeypatched before lifespan
+- [x] `tests/test_chunker.py` — 12 unit tests for chunking logic
+- [x] `tests/test_retriever.py` — 11 unit tests for RRF merge and SQL helpers
+- [x] `tests/test_api.py` — 14 integration tests for /ingest and /query (skip markers if no DB)
+- [x] `.github/workflows/ci.yml` — ruff + mypy + pytest with pgvector service
 
-### M6 — Docker & deploy
-- [ ] `Dockerfile` — multi-stage build
-- [ ] Render deployment (render.yaml or manual setup)
-- [ ] `README.md` updated with live demo URL + architecture diagram
+### M6 — Docker & deploy ✅
+- [x] `Dockerfile` — multi-stage build, non-root user, corpus bundled in image
+- [x] `render.yaml` — free-tier Docker web service + managed PostgreSQL
+- [x] `README.md` — complete with architecture diagram, API reference, deploy instructions
+- [x] `public/favicon.svg` — teal stacked-pages with spark icon
+
+### Post-M6 — Observability ✅
+- [x] `app/config.py` — rotating file handler (`RotatingFileHandler`, 10 MB / 5 backups) added to `configure_logging()`; `LOG_FILE` env var added
+- [x] `app/main.py` — HTTP access logging middleware logs method, path, status, duration, client IP to `access` logger
+- [x] `docker-compose.yml` — `./logs:/app/logs` bind mount; `LOG_FILE` env var set
+- [x] `requirements.txt` — `httpx` pinned to `>=0.27.0,<0.28.0` (upper bound required by `ollama==0.4.4`)
 
 ---
 
-## 13. Non-Functional Requirements
+## 14. Non-Functional Requirements
 
 | NFR | Target |
 |---|---|

@@ -154,7 +154,7 @@ All variables are in `.env` (gitignored). See `.env.example` for the full list.
 |---|---|---|
 | `DATABASE_URL` | (required) | asyncpg connection string |
 | `LLM_PROVIDER` | `ollama` | `ollama` or `anthropic` |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL. Set to `http://host.docker.internal:11434` when running inside Docker on macOS/Windows |
 | `OLLAMA_LLM_MODEL` | `llama3.2` | Ollama chat model |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Ollama embedding model |
 | `ANTHROPIC_API_KEY` | _(optional)_ | Required only if `LLM_PROVIDER=anthropic` |
@@ -164,6 +164,7 @@ All variables are in `.env` (gitignored). See `.env.example` for the full list.
 | `CHUNK_OVERLAP` | `50` | Overlap tokens between chunks |
 | `TOP_K` | `5` | Default number of chunks to retrieve |
 | `LOG_LEVEL` | `INFO` | Python log level |
+| `LOG_FILE` | `logs/app.log` | Rotating log file path (10 MB/file, 5 backups). Mounted to host via `./logs:/app/logs` in docker-compose |
 
 ## Development Setup
 
