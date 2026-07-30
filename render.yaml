@@ -1,0 +1,57 @@
+# Render deployment configuration
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Live demo uses LLM_PROVIDER=anthropic because Ollama cannot run on Render's
+# infrastructure. Set ANTHROPIC_API_KEY and VOYAGE_API_KEY as secret env vars
+# in the Render dashboard before deploying.
+#
+# Note: Render's managed PostgreSQL supports the pgvector extension as of 2024.
+# After first deploy, enable it via the Render DB shell:
+#   CREATE EXTENSION IF NOT EXISTS vector;
+# (The app's lifespan also runs this DDL automatically on startup.)
+
+services:
+  - type: web
+    name: docu-rag
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: docu-rag-db
+          property: connectionString
+
+      # Provider — use Anthropic for the live demo (Ollama is not available on Render)
+      - key: LLM_PROVIDER
+        value: anthropic
+
+      - key: ANTHROPIC_LLM_MODEL
+        value: claude-haiku-4-5-20251001
+
+      # Set these as secret env vars in the Render dashboard:
+      #   ANTHROPIC_API_KEY  — your Anthropic API key
+      #   VOYAGE_API_KEY     — your Voyage AI API key (for voyage-3 embeddings)
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: VOYAGE_API_KEY
+        sync: false
+
+      # Voyage AI voyage-3 produces 1024-dim vectors
+      - key: EMBED_DIMS
+        value: "1024"
+
+      - key: CHUNK_SIZE
+        value: "512"
+      - key: CHUNK_OVERLAP
+        value: "50"
+      - key: TOP_K
+        value: "5"
+      - key: LOG_LEVEL
+        value: INFO
+
+databases:
+  - name: docu-rag-db
+    plan: free
+    databaseName: docu_rag
+    user: docu_rag

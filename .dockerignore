@@ -1,0 +1,45 @@
+# Version control
+.git/
+.gitignore
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.eggs/
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets — never bake into the image
+.env
+.env.local
+.env.*.local
+
+# Dev tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Tests and docs (not needed at runtime)
+tests/
+docs/
+
+# Local Docker data volume
+pgdata/
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+
+# Claude Code
+.claude/
