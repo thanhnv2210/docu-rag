@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.db.connection import close_pool, create_pool
@@ -74,6 +76,12 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(ingest_router)
     app.include_router(query_router)
+
+    @app.get("/", include_in_schema=False)
+    async def index() -> FileResponse:
+        return FileResponse("app/static/index.html")
+
+    app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
     return app
 

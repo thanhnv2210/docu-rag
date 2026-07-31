@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>docu-rag</title>
+    <style>
+        :root {
+            --bg: #ffffff;
+            --bg-secondary: #f8fafc;
+            --border: #e2e8f0;
+            --text: #0f172a;
+            --text-muted: #64748b;
+            --accent: #0f766e;
+            --accent-dim: #ccfbf1;
+            --accent-hover: #0d6660;
+            --answer-bg: #f0fdf9;
+            --source-bg: #f1f5f9;
+            --error: #dc2626;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #0f172a;
+                --bg-secondary: #1e293b;
+                --border: #334155;
+                --text: #f1f5f9;
+                --text-muted: #94a3b8;
+                --accent: #14b8a6;
+                --accent-dim: #134e4a;
+                --accent-hover: #0d9488;
+                --answer-bg: #0d2b27;
+                --source-bg: #1e293b;
+                --error: #f87171;
+            }
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            font-size: 15px;
+        }
+
+        /* ── Header ── */
+        header {
+            background: var(--accent);
+            color: #fff;
+            padding: 14px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+            gap: 12px;
+        }
+        header h1 { font-size: 1rem; font-weight: 700; letter-spacing: 0.02em; }
+        header p  { font-size: 0.72rem; opacity: 0.75; margin-top: 2px; }
+
+        #status-badge {
+            font-size: 0.7rem;
+            padding: 4px 11px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.18);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        /* ── Main scroll area ── */
+        main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 28px 24px;
+            max-width: 760px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        /* ── Ingest banner ── */
+        #ingest-banner {
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 13px 16px;
+            margin-bottom: 24px;
+            font-size: 0.83rem;
+            color: var(--text-muted);
+        }
+        #ingest-btn {
+            padding: 6px 16px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        #ingest-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ── Error ── */
+        #error-msg {
+            display: none;
+            color: var(--error);
+            font-size: 0.83rem;
+            padding: 11px 14px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--error);
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        /* ── Empty / sample questions ── */
+        #empty-state { text-align: center; padding: 40px 0 24px; }
+        #empty-state h2 { font-size: 1rem; color: var(--text-muted); font-weight: 500; margin-bottom: 6px; }
+        #empty-state p  { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 28px; }
+
+        #samples { display: flex; flex-direction: column; gap: 8px; max-width: 560px; margin: 0 auto; }
+
+        .sample-btn {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            text-align: left;
+            cursor: pointer;
+            font-size: 0.83rem;
+            color: var(--text);
+            transition: border-color 0.15s, background 0.15s;
+            line-height: 1.4;
+        }
+        .sample-btn:hover { border-color: var(--accent); background: var(--accent-dim); }
+
+        /* ── Answer card ── */
+        #answer-card {
+            display: none;
+            background: var(--answer-bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        .card-label {
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: var(--accent);
+            margin-bottom: 5px;
+        }
+        #question-display {
+            font-size: 0.93rem;
+            font-weight: 500;
+            color: var(--text);
+            margin-bottom: 18px;
+            line-height: 1.5;
+        }
+        .answer-label {
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+        #answer-text {
+            font-size: 0.88rem;
+            line-height: 1.75;
+            color: var(--text);
+            white-space: pre-wrap;
+            word-break: break-word;
+            min-height: 22px;
+        }
+
+        #cursor {
+            display: inline-block;
+            width: 2px;
+            height: 0.95em;
+            background: var(--accent);
+            vertical-align: text-bottom;
+            margin-left: 1px;
+            animation: blink 0.75s step-end infinite;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
+
+        /* ── Sources ── */
+        #sources {
+            display: none;
+            margin-top: 18px;
+            padding-top: 14px;
+            border-top: 1px solid var(--border);
+        }
+        .src-label {
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+        .source-tag {
+            display: inline-block;
+            background: var(--source-bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 3px 9px;
+            font-size: 0.73rem;
+            color: var(--text-muted);
+            margin: 2px 4px 2px 0;
+            font-family: ui-monospace, 'Cascadia Code', monospace;
+        }
+        #meta {
+            margin-top: 10px;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+
+        /* ── Footer / input ── */
+        footer {
+            flex-shrink: 0;
+            border-top: 1px solid var(--border);
+            background: var(--bg);
+            padding: 14px 24px;
+        }
+        #input-row {
+            max-width: 760px;
+            margin: 0 auto;
+            display: flex;
+            gap: 10px;
+        }
+        #question-input {
+            flex: 1;
+            padding: 10px 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.88rem;
+            background: var(--bg-secondary);
+            color: var(--text);
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        #question-input:focus { border-color: var(--accent); }
+        #question-input::placeholder { color: var(--text-muted); }
+
+        #send-btn {
+            padding: 10px 22px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        #send-btn:hover:not(:disabled) { background: var(--accent-hover); }
+        #send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div>
+        <h1>docu-rag</h1>
+        <p>RAG over the FinPay demo corpus</p>
+    </div>
+    <span id="status-badge">connecting…</span>
+</header>
+
+<main>
+    <div id="ingest-banner">
+        <span>No documents indexed yet. Ingest the demo corpus to get started.</span>
+        <button id="ingest-btn" onclick="ingestCorpus()">Ingest corpus</button>
+    </div>
+
+    <div id="error-msg"></div>
+
+    <div id="answer-card">
+        <div class="card-label">Question</div>
+        <div id="question-display"></div>
+        <div class="answer-label">Answer</div>
+        <div id="answer-text"><span id="cursor"></span></div>
+        <div id="sources">
+            <div class="src-label">Sources</div>
+            <div id="source-list"></div>
+            <div id="meta"></div>
+        </div>
+    </div>
+
+    <div id="empty-state">
+        <h2>Ask anything about the FinPay platform</h2>
+        <p>Hybrid vector + full-text search &nbsp;·&nbsp; Streaming answers &nbsp;·&nbsp; Source attribution</p>
+        <div id="samples">
+            <button class="sample-btn" onclick="ask(this.textContent)">What retry policy applies when ArcaPay returns a timeout?</button>
+            <button class="sample-btn" onclick="ask(this.textContent)">How does FinPay handle a payment that times out during hub submission?</button>
+            <button class="sample-btn" onclick="ask(this.textContent)">What indexes exist on the transactions table and why?</button>
+            <button class="sample-btn" onclick="ask(this.textContent)">How does the circuit breaker interact with hub routing?</button>
+            <button class="sample-btn" onclick="ask(this.textContent)">What happens to a transaction stuck in the PENDING state?</button>
+        </div>
+    </div>
+</main>
+
+<footer>
+    <div id="input-row">
+        <input id="question-input" type="text"
+               placeholder="Ask a question about the FinPay docs…"
+               onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitQuestion();}">
+        <button id="send-btn" onclick="submitQuestion()">Send</button>
+    </div>
+</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+
+async function checkHealth() {
+    try {
+        const res = await fetch('/health');
+        const d = await res.json();
+        $('status-badge').textContent = `${d.provider} · ${d.vector_count} chunks`;
+        if (d.vector_count === 0) $('ingest-banner').style.display = 'flex';
+    } catch {
+        $('status-badge').textContent = 'offline';
+    }
+}
+
+async function ingestCorpus() {
+    const btn = $('ingest-btn');
+    btn.disabled = true;
+    btn.textContent = 'Ingesting…';
+    showError('');
+    try {
+        const res = await fetch('/ingest', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({corpus_path: 'corpus/fintech-demo', reset: false})
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.detail || 'Ingest failed');
+        $('ingest-banner').style.display = 'none';
+        $('status-badge').textContent = `anthropic · ${d.chunks_indexed} chunks`;
+    } catch (e) {
+        showError(e.message);
+        btn.disabled = false;
+        btn.textContent = 'Retry ingest';
+    }
+}
+
+function ask(text) {
+    $('question-input').value = text;
+    submitQuestion();
+}
+
+async function submitQuestion() {
+    const input = $('question-input');
+    const question = input.value.trim();
+    if (!question) return;
+
+    showError('');
+    setLoading(true);
+
+    $('empty-state').style.display = 'none';
+    $('answer-card').style.display = 'block';
+    $('question-display').textContent = question;
+    $('answer-text').innerHTML = '<span id="cursor"></span>';
+    $('sources').style.display = 'none';
+    $('source-list').innerHTML = '';
+    $('meta').textContent = '';
+
+    try {
+        const res = await fetch('/query', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({question, top_k: 5})
+        });
+        if (!res.ok) throw new Error(`Server error ${res.status}`);
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let answerText = '';
+
+        while (true) {
+            const {done, value} = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, {stream: true});
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const payload = line.slice(6).trim();
+                if (payload === '[DONE]') break;
+                let event;
+                try { event = JSON.parse(payload); } catch { continue; }
+
+                if (event.type === 'token') {
+                    answerText += event.content;
+                    $('answer-text').textContent = answerText;
+                } else if (event.type === 'metadata') {
+                    renderSources(event);
+                    $('status-badge').textContent =
+                        `${event.provider} · ${event.latency_ms}ms`;
+                }
+            }
+        }
+    } catch (e) {
+        showError('Query failed: ' + e.message);
+    } finally {
+        setLoading(false);
+    }
+}
+
+function renderSources(meta) {
+    const seen = new Set();
+    for (const s of meta.sources ?? []) {
+        const name = s.file_path.split('/').pop();
+        if (seen.has(name)) continue;
+        seen.add(name);
+        const tag = document.createElement('span');
+        tag.className = 'source-tag';
+        tag.textContent = name;
+        $('source-list').appendChild(tag);
+    }
+    $('meta').textContent =
+        `${meta.latency_ms} ms · ${meta.tokens_used} tokens · ${meta.provider}`;
+    $('sources').style.display = 'block';
+}
+
+function setLoading(on) {
+    $('send-btn').disabled = on;
+    $('send-btn').textContent = on ? 'Thinking…' : 'Send';
+    $('question-input').disabled = on;
+}
+
+function showError(msg) {
+    const el = $('error-msg');
+    el.textContent = msg;
+    el.style.display = msg ? 'block' : 'none';
+}
+
+checkHealth();
+</script>
+</body>
+</html>
