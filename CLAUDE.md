@@ -131,15 +131,15 @@ CREATE TABLE IF NOT EXISTS documents (
     title       TEXT,
     chunk_index INTEGER NOT NULL,
     content     TEXT NOT NULL,
-    embedding   VECTOR(768),        -- nomic-embed-text dims; 1536 if using voyage-3
+    embedding   VECTOR(768),        -- nomic-embed-text dims; 1024 if using voyage-3
     metadata    JSONB DEFAULT '{}',
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Vector index (IVFFlat for datasets < 1M rows)
+-- HNSW vector index (incremental build, no batch memory spike, better recall than IVFFlat)
 CREATE INDEX IF NOT EXISTS idx_documents_embedding
-    ON documents USING ivfflat (embedding vector_cosine_ops)
-    WITH (lists = 100);
+    ON documents USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
 
 -- Full-text index
 CREATE INDEX IF NOT EXISTS idx_documents_fts

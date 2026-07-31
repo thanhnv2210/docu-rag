@@ -40,7 +40,6 @@ The problem has two layers:
 - Authentication / API keys
 - Multi-user sessions or conversation history
 - Document update / delete (full re-ingest only)
-- Frontend UI (the API is the product; curl or any frontend can consume it)
 - PDF or DOCX support
 
 ---
@@ -79,7 +78,7 @@ The problem has two layers:
 │  Table: documents                                        │
 │  ├── id, file_path, title, chunk_index                   │
 │  ├── content (TEXT)          ← full-text index (GIN)     │
-│  ├── embedding (VECTOR(768)) ← IVFFlat index             │
+│  ├── embedding (VECTOR(dims)) ← HNSW index               │
 │  └── metadata (JSONB)                                    │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -232,8 +231,8 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 
 CREATE INDEX IF NOT EXISTS idx_documents_embedding
-    ON documents USING ivfflat (embedding vector_cosine_ops)
-    WITH (lists = 100);
+    ON documents USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
 
 CREATE INDEX IF NOT EXISTS idx_documents_fts
     ON documents USING gin(to_tsvector('english', content));
@@ -241,8 +240,8 @@ CREATE INDEX IF NOT EXISTS idx_documents_fts
 
 **Notes:**
 - `EMBED_DIMS=768` for Ollama `nomic-embed-text`; set to `1024` if using Anthropic `voyage-3`
-- IVFFlat index is **deferred**: it is not created on startup (IVFFlat requires data to train on). `schema.py` creates only the GIN FTS index at startup; the IVFFlat index is dropped and rebuilt by `ensure_vector_index()` called at the end of each `/ingest` request
-- IVFFlat with `lists=100` is appropriate for corpora up to ~1M chunks; switch to HNSW for larger datasets
+- HNSW index is **deferred**: `schema.py` creates only the GIN FTS index at startup; the HNSW index is dropped and rebuilt by `ensure_vector_index()` called at the end of each `/ingest` request so it is built over real data
+- HNSW (`m=16, ef_construction=64`) was chosen over IVFFlat because its incremental build has no batch memory spike — IVFFlat's k-means step requires ~40 MB at 1024 dims, exceeding Render free-tier `maintenance_work_mem` of 16 MB. HNSW also delivers better recall than IVFFlat for datasets under ~1M rows. See ADR-002.
 - `metadata` JSONB stores arbitrary front-matter extracted from markdown (e.g., `{"tags": ["resilience"], "version": "1.2"}`)
 
 ---
@@ -425,6 +424,8 @@ These files are designed to produce realistic, multi-hop RAG questions — e.g.,
 | Validation | Pydantic v2 | FastAPI-native; v2 is 10–20x faster than v1 |
 | Deployment | Render | Free tier supports Docker services + managed PostgreSQL; no credit card needed |
 | CI | GitHub Actions | Free for public repos; ruff + mypy + pytest is a clean, fast pipeline |
+| Frontend | Vanilla HTML/CSS/JS (`app/static/index.html`) | No build step; served directly by FastAPI; marked.js for markdown rendering |
+| Vector index | HNSW (pgvector) | Incremental build fits in 16 MB `maintenance_work_mem`; better recall than IVFFlat for small-to-medium datasets |
 
 ---
 
@@ -474,6 +475,17 @@ These files are designed to produce realistic, multi-hop RAG questions — e.g.,
 - [x] `app/main.py` — HTTP access logging middleware logs method, path, status, duration, client IP to `access` logger
 - [x] `docker-compose.yml` — `./logs:/app/logs` bind mount; `LOG_FILE` env var set
 - [x] `requirements.txt` — `httpx` pinned to `>=0.27.0,<0.28.0` (upper bound required by `ollama==0.4.4`)
+
+### Post-M6 — Static UI ✅
+- [x] `app/static/index.html` — single-page vanilla JS chat UI; dark/light theme via `prefers-color-scheme`; teal `#0f766e` accent
+- [x] `app/main.py` — `GET /` serves `index.html` via `FileResponse`; `/static` mounted via `StaticFiles`
+- [x] `requirements.txt` — `aiofiles==24.1.0` added (required by Starlette `StaticFiles`)
+- [x] Markdown rendering via `marked.js` CDN — LLM responses render headings, bold, lists, code blocks correctly
+
+### Post-M6 — Vector index: IVFFlat → HNSW ✅
+- [x] `app/db/schema.py` — switched from `ivfflat (lists=100)` to `hnsw (m=16, ef_construction=64)`
+- [x] Reason: IVFFlat k-means build requires ~40 MB at 1024 dims, exceeding Render free-tier `maintenance_work_mem` of 16 MB. HNSW builds incrementally with no memory spike and delivers better recall.
+- [x] `render.yaml` — `buildFilter` added; only `app/**`, `corpus/**`, `Dockerfile`, `requirements.txt` trigger redeploy
 
 ---
 
