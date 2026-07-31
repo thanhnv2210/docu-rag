@@ -133,52 +133,46 @@ sequenceDiagram
     participant LLM as LLM Client (Ollama / Anthropic)
     participant DB as PostgreSQL + pgvector
 
-    rect rgb(240, 253, 244)
-        Note over API,DB: Startup — schema initialisation
-        API->>DB: CREATE EXTENSION vector
-        API->>DB: CREATE TABLE documents (embedding VECTOR(dims))
-        API->>DB: CREATE INDEX gin (full-text search)
-        API->>DB: CREATE INDEX hnsw (vector cosine search)
-    end
+    Note over API,DB: Startup — schema initialisation
+    API->>DB: CREATE EXTENSION vector
+    API->>DB: CREATE TABLE documents (embedding VECTOR(dims))
+    API->>DB: CREATE INDEX gin (full-text search)
+    API->>DB: CREATE INDEX hnsw (vector cosine search)
 
-    rect rgb(224, 242, 254)
-        Note over Client,DB: POST /ingest
-        Client->>API: POST /ingest {corpus_path, reset}
-        API->>Chunker: chunk_corpus(corpus_path)
-        Chunker-->>API: [Chunk, ...]  (512-token chunks per .md file)
-        API->>Embedder: embed([chunk.content, ...])  batches of 64
-        Embedder-->>API: [[float, ...], ...]
-        opt reset=true
-            API->>DB: DELETE FROM documents WHERE file_path LIKE corpus%
-        end
-        API->>DB: INSERT documents (file_path, title, chunk_index, content, embedding)
-        API->>DB: DROP + REBUILD hnsw index over new data
-        API-->>Client: 200 {chunks_indexed, files_processed, duration_ms}
+    Note over Client,DB: POST /ingest
+    Client->>API: POST /ingest {corpus_path, reset}
+    API->>Chunker: chunk_corpus(corpus_path)
+    Chunker-->>API: [Chunk, ...]  (512-token chunks per .md file)
+    API->>Embedder: embed([chunk.content, ...])  batches of 64
+    Embedder-->>API: [[float, ...], ...]
+    opt reset=true
+        API->>DB: DELETE FROM documents WHERE file_path LIKE corpus%
     end
+    API->>DB: INSERT documents (file_path, title, chunk_index, content, embedding)
+    API->>DB: DROP + REBUILD hnsw index over new data
+    API-->>Client: 200 {chunks_indexed, files_processed, duration_ms}
 
-    rect rgb(255, 251, 235)
-        Note over Client,DB: POST /query — SSE streaming
-        Client->>API: POST /query {question, top_k}
-        API->>Embedder: embed([question])
-        Embedder-->>API: query_vector
-        API->>Retriever: retrieve(question, query_vector, top_k)
-        par Vector search
-            Retriever->>DB: SELECT ... ORDER BY embedding <=> query_vector LIMIT 2×top_k
-            DB-->>Retriever: vector_ranked [(id, rank), ...]
-        and Full-text search
-            Retriever->>DB: SELECT ... ORDER BY ts_rank(tsvector, query) LIMIT 2×top_k
-            DB-->>Retriever: fts_ranked [(id, rank), ...]
-        end
-        Retriever->>Retriever: RRF merge  score = Σ 1 / (60 + rank)
-        Retriever-->>API: top_k chunks (boosted if in both lists)
-        API->>LLM: stream_chat(system_prompt + chunks + question)
-        loop token stream
-            LLM-->>API: token
-            API-->>Client: data: {"type":"token","content":"..."}
-        end
-        API-->>Client: data: {"type":"metadata","sources":[...],"latency_ms":N}
-        API-->>Client: data: [DONE]
+    Note over Client,DB: POST /query — SSE streaming
+    Client->>API: POST /query {question, top_k}
+    API->>Embedder: embed([question])
+    Embedder-->>API: query_vector
+    API->>Retriever: retrieve(question, query_vector, top_k)
+    par Vector search
+        Retriever->>DB: SELECT ... ORDER BY embedding <=> query_vector LIMIT 2×top_k
+        DB-->>Retriever: vector_ranked [(id, rank), ...]
+    and Full-text search
+        Retriever->>DB: SELECT ... ORDER BY ts_rank(tsvector, query) LIMIT 2×top_k
+        DB-->>Retriever: fts_ranked [(id, rank), ...]
     end
+    Retriever->>Retriever: RRF merge  score = Σ 1 / (60 + rank)
+    Retriever-->>API: top_k chunks (boosted if in both lists)
+    API->>LLM: stream_chat(system_prompt + chunks + question)
+    loop token stream
+        LLM-->>API: token
+        API-->>Client: data: {"type":"token","content":"..."}
+    end
+    API-->>Client: data: {"type":"metadata","sources":[...],"latency_ms":N}
+    API-->>Client: data: [DONE]
 ```
 
 > Full PlantUML source: [`docs/data-flow.puml`](docs/data-flow.puml)
