@@ -29,18 +29,17 @@ CREATE INDEX IF NOT EXISTS idx_documents_fts
     ON documents USING gin(to_tsvector('english', content));
 """
 
-# IVFFlat index for vector search.
-# NOTE: IVFFlat requires rows to build cluster centroids — creating it on an
-# empty table produces a useless index (lists=1). We create it here with
-# IF NOT EXISTS so it is a no-op on subsequent startups; the ingest endpoint
-# calls ensure_vector_index() after bulk insert to (re)build it with data.
+# HNSW index for vector search.
+# HNSW builds incrementally (no k-means batch step) so it works within
+# Render's free-tier maintenance_work_mem=16 MB. It also outperforms IVFFlat
+# on recall and is the recommended index for datasets under ~1M rows.
 _CREATE_VECTOR_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_documents_embedding
-    ON documents USING ivfflat (embedding vector_cosine_ops)
-    WITH (lists = 10);
+    ON documents USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
 """
 
-# Called by the ingest service after rows are inserted so IVFFlat has data.
+# Called by the ingest service after rows are inserted to (re)build the index.
 _DROP_VECTOR_INDEX = "DROP INDEX IF EXISTS idx_documents_embedding;"
 
 
