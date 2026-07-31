@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>docu-rag</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
     <style>
         :root {
             --bg: #ffffff;
@@ -176,9 +177,62 @@
             font-size: 0.88rem;
             line-height: 1.75;
             color: var(--text);
-            white-space: pre-wrap;
             word-break: break-word;
             min-height: 22px;
+        }
+
+        /* ── Markdown prose styles ── */
+        #answer-text h1, #answer-text h2, #answer-text h3 {
+            font-weight: 600;
+            margin: 14px 0 6px;
+            line-height: 1.3;
+            color: var(--text);
+        }
+        #answer-text h1 { font-size: 1.05rem; }
+        #answer-text h2 { font-size: 0.97rem; }
+        #answer-text h3 { font-size: 0.9rem; }
+        #answer-text h1:first-child,
+        #answer-text h2:first-child,
+        #answer-text h3:first-child { margin-top: 0; }
+
+        #answer-text p { margin: 0 0 10px; }
+        #answer-text p:last-child { margin-bottom: 0; }
+
+        #answer-text ul, #answer-text ol {
+            margin: 6px 0 10px 20px;
+            padding: 0;
+        }
+        #answer-text li { margin-bottom: 4px; }
+
+        #answer-text strong { font-weight: 600; }
+
+        #answer-text code {
+            font-family: ui-monospace, 'Cascadia Code', monospace;
+            font-size: 0.82rem;
+            background: var(--source-bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1px 5px;
+        }
+        #answer-text pre {
+            background: var(--source-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 14px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        #answer-text pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            font-size: 0.82rem;
+        }
+        #answer-text blockquote {
+            border-left: 3px solid var(--accent);
+            margin: 8px 0;
+            padding: 2px 0 2px 14px;
+            color: var(--text-muted);
         }
 
         #cursor {
@@ -406,7 +460,7 @@ async function submitQuestion() {
 
                 if (event.type === 'token') {
                     answerText += event.content;
-                    $('answer-text').textContent = answerText;
+                    $('answer-text').innerHTML = marked.parse(answerText);
                 } else if (event.type === 'metadata') {
                     renderSources(event);
                     $('status-badge').textContent =
