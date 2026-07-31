@@ -4,7 +4,7 @@ A production-grade RAG (Retrieval-Augmented Generation) API. Point it at any fol
 
 Built with **Python · FastAPI · LangChain · pgvector · Ollama**.
 
-> **Live demo:** _deploying to Render — URL will be added here_
+> **Live demo:** https://docu-rag.onrender.com
 
 ---
 
@@ -34,7 +34,7 @@ ollama pull nomic-embed-text
 ### Run
 
 ```bash
-git clone https://github.com/<your-username>/docu-rag.git
+git clone https://github.com/thanhnv2210/docu-rag.git
 cd docu-rag
 cp .env.example .env
 docker compose up --build
@@ -244,7 +244,7 @@ Restart the container. Re-ingest your corpus — embedding dimensions changed.
 
 ## Deploy to Render
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/<your-username>/docu-rag)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/thanhnv2210/docu-rag)
 
 The included `render.yaml` configures a free-tier Docker web service + managed PostgreSQL.
 
