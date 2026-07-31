@@ -37,7 +37,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_fts
 _CREATE_VECTOR_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_documents_embedding
     ON documents USING ivfflat (embedding vector_cosine_ops)
-    WITH (lists = 100);
+    WITH (lists = 10);
 """
 
 # Called by the ingest service after rows are inserted so IVFFlat has data.
