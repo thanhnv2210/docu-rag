@@ -1,0 +1,99 @@
+@startuml docu-rag Data Flow
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+skinparam ArrowColor #0f766e
+skinparam ActorBorderColor #0f766e
+skinparam ParticipantBorderColor #0f766e
+skinparam SequenceLifeLineBorderColor #94a3b8
+skinparam NoteBackgroundColor #f0fdf4
+skinparam NoteBorderColor #0f766e
+
+title docu-rag — System Data Flow
+
+actor       "Client\n(curl / HTTP)"   as Client
+participant "FastAPI\n:8001"          as API
+participant "Chunker\n(LangChain)"    as Chunker
+participant "Embedder\n(Ollama / Voyage AI)" as Embedder
+participant "Retriever\n(SQL + RRF)"  as Retriever
+participant "LLM Client\n(Ollama / Anthropic)" as LLM
+database    "PostgreSQL\n+ pgvector"  as DB
+
+== Startup (lifespan) ==
+
+API -> DB : CREATE EXTENSION IF NOT EXISTS vector
+API -> DB : CREATE TABLE documents (embedding VECTOR(dims))
+API -> DB : CREATE INDEX USING gin(to_tsvector('english', content))
+API -> DB : CREATE INDEX USING hnsw (embedding vector_cosine_ops)
+note right of API : Schema initialised once on startup.\nAll DDL is idempotent (IF NOT EXISTS).
+
+== POST /ingest ==
+
+Client -> API : POST /ingest\n{ corpus_path, reset }
+
+API -> Chunker : chunk_corpus(corpus_path)
+note right of Chunker : RecursiveCharacterTextSplitter\nchunk_size=512, overlap=50\nSplits each .md file into chunks\nwith file_path, title, chunk_index
+Chunker --> API : [ Chunk, ... ]
+
+API -> Embedder : embed([ chunk.content, ... ])
+note right of Embedder : Batches of 64 texts per API call.\nOllama → nomic-embed-text (768 dims)\nVoyage AI → voyage-3 (1024 dims)
+Embedder --> API : [ [float, ...], ... ]
+
+group DB transaction
+  alt reset=true
+    API -> DB : DELETE FROM documents\nWHERE file_path LIKE corpus_path%
+  end
+  API -> DB : INSERT INTO documents\n(file_path, title, chunk_index,\n content, embedding, metadata)
+end
+
+API -> DB : DROP INDEX idx_documents_embedding
+API -> DB : CREATE INDEX USING hnsw (embedding vector_cosine_ops)
+note right of DB : Index rebuilt after bulk insert\nso it reflects current data.\nRuns outside transaction (DDL).
+
+API --> Client : 200 OK\n{ chunks_indexed, files_processed, duration_ms }
+
+== POST /query (SSE streaming) ==
+
+Client -> API : POST /query\n{ question, top_k }
+
+API -> Embedder : embed([ question ])
+Embedder --> API : query_vector [ float, ... ]
+
+API -> Retriever : retrieve(question, query_vector, top_k)
+
+group Parallel DB queries
+  Retriever -> DB : SELECT ... ORDER BY\n  embedding <=> query_vector\nLIMIT top_k * 2
+  note right of DB : Vector search\n(HNSW cosine distance)
+  DB --> Retriever : vector_ranked [ (id, rank), ... ]
+
+  Retriever -> DB : SELECT ... ORDER BY\n  ts_rank(tsvector, query)\nLIMIT top_k * 2
+  note right of DB : Full-text search\n(GIN index + ts_rank)
+  DB --> Retriever : fts_ranked [ (id, rank), ... ]
+end
+
+Retriever -> Retriever : RRF merge\nscore = Σ 1 / (60 + rank)\nSort desc, take top_k
+note right of Retriever : Chunks appearing in both lists\nreceive a boosted combined score.
+Retriever --> API : [ Chunk, ... ] top_k results
+
+API -> LLM : stream_chat(system_prompt + chunks + question)
+note right of LLM : Ollama → llama3.2 (local)\nAnthropic → claude-haiku-4-5-20251001
+
+loop token stream
+  LLM --> API : token
+  API --> Client : data: {"type":"token","content":"..."}
+end
+
+LLM --> API : [stream done]
+API --> Client : data: {"type":"metadata",\n  "sources":[...],\n  "latency_ms":N,\n  "tokens_used":N,\n  "provider":"..."}
+API --> Client : data: [DONE]
+
+== GET /health ==
+
+Client -> API : GET /health
+API -> DB : SELECT COUNT(*) FROM documents
+DB --> API : vector_count
+API --> Client : 200 OK\n{ status, vector_count, provider,\n  embed_model, llm_model }
+
+@enduml
