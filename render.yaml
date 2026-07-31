@@ -16,6 +16,12 @@ services:
     runtime: docker
     plan: free
     healthCheckPath: /health
+    buildFilter:
+      paths:
+        - app/**
+        - corpus/**
+        - Dockerfile
+        - requirements.txt
     envVars:
       - key: DATABASE_URL
         fromDatabase:
